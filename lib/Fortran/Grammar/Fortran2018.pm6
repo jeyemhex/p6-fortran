@@ -1,4 +1,6 @@
 grammar Fortran2018 {
+    token TOP { $<program> }
+
     #`[R401] token xyz-list {
         |  $<xyz>  [  "," $<xyz> ]*
     }
