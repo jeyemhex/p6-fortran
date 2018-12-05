@@ -1,8 +1,5 @@
 #!/usr/bin/env perl6
 
-my %rules;
-my %constraints;
-
 grammar Standard {
     token TOP                   { [<syntax-rule> | <syntax-constraint>]+ % "\n" }
 
@@ -41,8 +38,8 @@ grammar Standard {
 
 class Standard-Actions {
     method TOP($/) {
-        if $<syntax-rule> {make $<syntax-rule>>>.made }
-        else              {make $<syntax-constraint>>>.made }
+        if $<syntax-rule> {make $<syntax-rule>[0].made }
+        else              {make $<syntax-constraint>[0].made }
     }
 
     method syntax-rule($/) {
@@ -86,15 +83,73 @@ class Standard-Actions {
     }
 }
 
+sub generate-rule($tree) {
+    my $rule;
+
+    if $tree<id>  ~~ /^R/ {
+        $rule = "    #`[{ $tree<id> }]";
+        $rule ~= " token $tree<name> \{\n";
+        for $tree<values>.values -> $isa {
+            $rule ~= "        |";
+            for $isa.values -> $elem {
+                $rule ~= " " ~ get-subrule($elem);
+            }
+            $rule ~= "\n"
+        }
+        $rule ~= "    \}";
+    } else {
+        $rule = "    #`[{ $tree<id> }: {$tree<text>}]";
+    }
+
+    return $rule;
+}
+
+sub get-subrule($isa) {
+    my Str $subrule;
+    given $isa<type> {
+        when /repeated/ { 
+            $subrule = " [ ";
+            for $isa<value>.values -> $elem {
+                $subrule ~= get-subrule($elem);
+            }
+            $subrule ~= " ]*";
+        }
+
+        when /optional/ {
+            $subrule = " [ ";
+            for $isa<value>.values -> $elem {
+                $subrule ~= get-subrule($elem);
+            }
+            $subrule ~= " ]?";
+        }
+
+        when /rule/     {
+            $subrule = ' $<' ~ $isa<value> ~ '>';
+        }
+
+        when /literal/  {
+            $subrule = ' "'  ~ $isa<value> ~ '"';
+        }
+    }
+    return $subrule;
+}
+
 #| A program to parse a Fortran standard to a perl6 grammar
 sub MAIN($std_file) {
+    my Bool %generated;
     my @std = $std_file.IO.lines;
 
-    for @std ->  $line {
+    say 'grammar Fortran2018 {';
+
+    for @std -> $line {
         my $tree = Standard.parse($line, actions => Standard-Actions).made
             or fail "Unable to parse rule:\n  $line";
-        say $line;
-        say $tree.gist;
-        say "";
+#EJH#         say $tree.gist;
+        if not %generated{$tree<id>} {
+            say generate-rule($tree) ~ "\n";
+            %generated{$tree<id>} = True;
+        }
     }
+    say '}';
 }
+
